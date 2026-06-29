@@ -41,7 +41,7 @@ func main() {
 
 ## 获取配置
 
-SDK 会在注册成功后拉取全局配置（`_global`）和当前服务配置（`ServiceName`），并在 Anox 推送更新时自动刷新。
+SDK 会在注册成功后拉取全局配置（`_global`）和当前服务配置（`ServiceName`）。`NewClient` 返回前会等待首轮配置拉取完成，后续在 Anox 推送更新时自动刷新。
 
 ```go
 config := client.Config()
