@@ -36,7 +36,6 @@ type HeartbeatMessage struct {
 type RegisterMessage struct {
 	Type        string `json:"type"`
 	ServiceName string `json:"service_name"`
-	HttpHost    string `json:"http_host"`
 	HttpPort    string `json:"http_port"`
 }
 

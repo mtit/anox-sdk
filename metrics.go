@@ -8,16 +8,20 @@ import (
 )
 
 func getSystemMetrics() (cpuPercent float64, memTotal, memAvail int64) {
-	if percents, err := cpu.Percent(0, false); err == nil && len(percents) > 0 {
+	percents, err := cpu.Percent(0, false)
+	if err != nil {
+		log.Printf("[Anox SDK] 读取CPU指标失败: %v", err)
+	} else if len(percents) > 0 {
 		cpuPercent = percents[0]
-	} else if err != nil {
-		log.Printf("[Anox SDK] Failed to read CPU metrics: %v", err)
 	}
-	if vm, err := mem.VirtualMemory(); err == nil {
+
+	vm, err := mem.VirtualMemory()
+	if err != nil {
+		log.Printf("[Anox SDK] 读取RAM指标失败: %v", err)
+	} else {
 		memTotal = int64(vm.Total / 1024 / 1024)
 		memAvail = int64(vm.Available / 1024 / 1024)
-	} else if err != nil {
-		log.Printf("[Anox SDK] Failed to read memory metrics: %v", err)
 	}
-	return cpuPercent, memTotal, memAvail
+
+	return
 }

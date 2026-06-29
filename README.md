@@ -19,7 +19,6 @@ func main() {
 	client, err := sdk.NewClient(sdk.Config{
 		AnoxURL:     "ws://127.0.0.1:8848/ws",
 		ServiceName: "demo-service",
-		HttpHost:    "127.0.0.1",
 		HttpPort:    "8080",
 	})
 	if err != nil {

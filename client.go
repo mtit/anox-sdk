@@ -23,7 +23,6 @@ type Client struct {
 	anoxURL        string
 	serviceName    string
 	instanceID     string
-	httpHost       string
 	httpPort       string
 	conn           *websocket.Conn
 	heartbeatStop  chan struct{}
@@ -42,20 +41,14 @@ type Client struct {
 type Config struct {
 	AnoxURL     string
 	ServiceName string
-	HttpHost    string
+	HttpHost    string // Deprecated: Anox server infers the service host from the WebSocket connection.
 	HttpPort    string
 }
 
 func NewClient(cfg Config) (*Client, error) {
-	httpHost := cfg.HttpHost
-	if httpHost == "" {
-		httpHost = "127.0.0.1"
-	}
-
 	client := &Client{
 		anoxURL:       cfg.AnoxURL,
 		serviceName:   cfg.ServiceName,
-		httpHost:      httpHost,
 		httpPort:      cfg.HttpPort,
 		globalConfig:  make(map[string]string),
 		serviceConfig: make(map[string]string),
@@ -200,7 +193,7 @@ func (c *Client) register() error {
 	c.registerDone = done
 	c.mu.Unlock()
 
-	registerMsg := RegisterMessage{Type: "register", ServiceName: c.serviceName, HttpHost: c.httpHost, HttpPort: c.httpPort}
+	registerMsg := RegisterMessage{Type: "register", ServiceName: c.serviceName, HttpPort: c.httpPort}
 	if err := c.writeJSON(registerMsg); err != nil {
 		c.mu.Lock()
 		c.registerDone = nil
