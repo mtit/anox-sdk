@@ -16,6 +16,7 @@ import (
 
 const (
 	registerTimeout   = 10 * time.Second
+	configPullTimeout = 5 * time.Second
 	maxReconnectDelay = 30 * time.Second
 )
 
@@ -35,6 +36,7 @@ type Client struct {
 	serviceConfig  map[string]string
 	globalVersion  int64
 	serviceVersion int64
+	configWaiters  map[string]chan struct{}
 	logger         *Logger
 }
 
@@ -52,6 +54,7 @@ func NewClient(cfg Config) (*Client, error) {
 		httpPort:      cfg.HttpPort,
 		globalConfig:  make(map[string]string),
 		serviceConfig: make(map[string]string),
+		configWaiters: make(map[string]chan struct{}),
 		heartbeatStop: make(chan struct{}),
 	}
 
@@ -307,6 +310,8 @@ func (c *Client) messageLoop() {
 			c.handleConfigUpdate(msg)
 		case "config_response":
 			c.handleConfigResponse(msg)
+		case "pull_config_error":
+			c.handlePullConfigError(msg)
 		}
 	}
 }
@@ -371,8 +376,31 @@ func minDuration(a, b time.Duration) time.Duration {
 }
 
 func (c *Client) pullInitialConfigs() {
-	c.pullConfig("_global")
-	c.pullConfig(c.serviceName)
+	services := []string{"_global", c.serviceName}
+	waiters := make([]chan struct{}, 0, len(services))
+
+	c.mu.Lock()
+	for _, service := range services {
+		waiter := make(chan struct{})
+		c.configWaiters[service] = waiter
+		waiters = append(waiters, waiter)
+	}
+	c.mu.Unlock()
+
+	for _, service := range services {
+		c.pullConfig(service)
+	}
+
+	timer := time.NewTimer(configPullTimeout)
+	defer timer.Stop()
+	for _, waiter := range waiters {
+		select {
+		case <-waiter:
+		case <-timer.C:
+			log.Printf("[Anox SDK] Initial config pull timed out")
+			return
+		}
+	}
 }
 
 func (c *Client) handlePong(msg map[string]interface{}) {
@@ -417,7 +445,41 @@ func (c *Client) handleConfigResponse(msg map[string]interface{}) {
 			}
 		}
 	}
+	c.notifyConfigWaiterLocked(service)
 	log.Printf("[Anox SDK] Config updated: %s (version: %d)", service, int64(version))
+}
+
+func (c *Client) handlePullConfigError(msg map[string]interface{}) {
+	service, _ := msg["service"].(string)
+	errorMsg, _ := msg["error"].(string)
+	if service == "" {
+		c.mu.Lock()
+		c.notifyAllConfigWaitersLocked()
+		c.mu.Unlock()
+		log.Printf("[Anox SDK] Failed to pull config: %s", errorMsg)
+		return
+	}
+
+	c.mu.Lock()
+	c.notifyConfigWaiterLocked(service)
+	c.mu.Unlock()
+	log.Printf("[Anox SDK] Failed to pull config %s: %s", service, errorMsg)
+}
+
+func (c *Client) notifyConfigWaiterLocked(service string) {
+	waiter, ok := c.configWaiters[service]
+	if !ok {
+		return
+	}
+	delete(c.configWaiters, service)
+	close(waiter)
+}
+
+func (c *Client) notifyAllConfigWaitersLocked() {
+	for service, waiter := range c.configWaiters {
+		delete(c.configWaiters, service)
+		close(waiter)
+	}
 }
 
 func (c *Client) pullConfig(service string) {
